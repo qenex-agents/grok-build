@@ -1183,6 +1183,7 @@ impl AgentBuilder {
         .await
         .map_err(|e| AgentBuildError::ToolError(e.to_string()))?;
         drop(tool_registry_timer);
+        xai_grok_tools::composio::attach(&tool_bridge, &self.working_directory).await;
         if let Some(access) = self.memory_v2_access.clone() {
             tool_bridge.update_resource(access).await;
         }

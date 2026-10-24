@@ -70,7 +70,7 @@ pub async fn run(args: ComposioArgs) -> Result<()> {
             bail!("--input must be a JSON object");
         }
     }
-    let mut client = connect(&args.address).await?;
+    let client = connect(&args.address).await?;
     match args.command {
         ComposioCommand::List { json } => {
             let tools = client

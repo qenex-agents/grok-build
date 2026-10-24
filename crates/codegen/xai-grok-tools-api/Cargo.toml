@@ -13,6 +13,7 @@ tonic = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 toml = { workspace = true }
 xai-tool-protocol = { workspace = true }
 

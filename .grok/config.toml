@@ -1,6 +1,9 @@
 # Composio tools for this project, reached through the QENEX agents gRPC
 # service xai.grok.tools.v1.GrokToolsService (@composio/grpc).
 # Run that server next to the agent. It holds the Composio session and API key.
+# A session registers every listed tool while this table is enabled.
+# Set enabled = false to skip the dial. A refused connection is remembered
+# for 30 seconds so later sessions in the same process do not wait again.
 #
 #   grok composio list
 #   grok composio finalize
