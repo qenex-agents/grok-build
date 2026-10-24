@@ -1,7 +1,14 @@
-# Composio Connect. One streamable-HTTP MCP server for connected apps.
-# First use opens OAuth; Grok stores the token in ~/.grok/mcp_credentials.json.
-# Authenticate from the TUI with /mcps, then i.
-# Docs: https://docs.composio.dev/docs/composio-connect
-[mcp_servers.composio]
-url = "https://connect.composio.dev/mcp"
+# Composio tools for this project, reached through the QENEX agents gRPC
+# service xai.grok.tools.v1.GrokToolsService (@composio/grpc).
+# Run that server next to the agent. It holds the Composio session and API key.
+#
+#   grok composio list
+#   grok composio finalize
+#   grok composio execute GITHUB_GET_USER --input '{"login":"octocat"}'
+#
+# COMPOSIO_GRPC_ADDRESS overrides address.
+# COMPOSIO_GRPC_TOKEN is sent as `authorization: Bearer` when the server requires it.
+# https://github.com/qenex-agents/composio/tree/next/ts/packages/grpc
+[composio_grpc]
+address = "127.0.0.1:50051"
 enabled = true

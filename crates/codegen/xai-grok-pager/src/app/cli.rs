@@ -42,6 +42,8 @@ pub enum Command {
     },
     /// Manage MCP server configurations
     Mcp(crate::mcp_cmd::McpArgs),
+    /// Call Composio tools through the QENEX agents gRPC service
+    Composio(crate::composio_cmd::ComposioArgs),
     /// Manage plugins and marketplace sources
     Plugin(crate::plugin_cmd::PluginArgs),
     /// Manage cross-session memory

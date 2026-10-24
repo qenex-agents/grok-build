@@ -62,6 +62,7 @@ fn process_identity(command: Option<&Command>, is_interactive: bool) -> Option<P
             | Command::Leader(_)
             | Command::Logout
             | Command::Mcp(_)
+            | Command::Composio(_)
             | Command::Plugin(_)
             | Command::Memory(_)
             | Command::Models
@@ -103,6 +104,7 @@ fn command_needs_pre_sandbox_policy_heal(command: Option<&Command>) -> bool {
             | Command::Logout
             | Command::Login { .. }
             | Command::Mcp(_)
+            | Command::Composio(_)
             | Command::Plugin(_)
             | Command::Memory(_)
             | Command::Sessions(_)
@@ -2265,6 +2267,10 @@ async fn async_main(mut args: PagerArgs) -> Result<()> {
             Command::Mcp(mcp_args) => {
                 init_tracing_simple("cli");
                 return xai_grok_pager::mcp_cmd::run(mcp_args).await;
+            }
+            Command::Composio(composio_args) => {
+                init_tracing_simple("cli");
+                return xai_grok_pager::composio_cmd::run(composio_args).await;
             }
             Command::Plugin(plugin_args) => {
                 init_tracing_simple("cli");

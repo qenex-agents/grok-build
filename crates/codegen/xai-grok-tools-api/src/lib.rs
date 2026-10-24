@@ -12,6 +12,7 @@ pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/xai.grok.tools.v1.rs"));
 }
 
+pub mod composio_grpc;
 pub mod config_validation;
 pub mod slash_commands;
 
