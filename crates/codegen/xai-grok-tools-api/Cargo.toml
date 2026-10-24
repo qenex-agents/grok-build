@@ -13,7 +13,12 @@ tonic = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 xai-tool-protocol = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
 
 [build-dependencies]
 xai-proto-build = { workspace = true }
