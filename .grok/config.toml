@@ -1,0 +1,7 @@
+# Composio Connect. One streamable-HTTP MCP server for connected apps.
+# First use opens OAuth; Grok stores the token in ~/.grok/mcp_credentials.json.
+# Authenticate from the TUI with /mcps, then i.
+# Docs: https://docs.composio.dev/docs/composio-connect
+[mcp_servers.composio]
+url = "https://connect.composio.dev/mcp"
+enabled = true
