@@ -393,7 +393,7 @@ async fn connect(address: &str) -> ComposioGrpcClient {
 #[tokio::test]
 async fn lists_finalizes_and_executes_like_composio_grpc() {
     let address = start().await;
-    let mut client = connect(&address).await;
+    let client = connect(&address).await;
 
     let hidden = client
         .list_tools(ListToolsOptions {
@@ -610,7 +610,7 @@ async fn grok_composio_cli_lists_finalizes_and_executes() {
 #[tokio::test]
 async fn missing_bearer_is_unauthenticated() {
     let address = start().await;
-    let mut client = ComposioGrpcClient::connect(&ComposioGrpcTarget {
+    let client = ComposioGrpcClient::connect(&ComposioGrpcTarget {
         address,
         auth_token: None,
     })

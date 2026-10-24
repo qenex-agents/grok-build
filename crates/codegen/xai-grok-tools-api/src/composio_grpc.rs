@@ -11,6 +11,7 @@
 //! config file.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -314,13 +315,40 @@ impl tonic::service::Interceptor for AuthInterceptor {
     }
 }
 
+/// Timeouts for one dial. The CLI uses [`DialOptions::default`]. A session
+/// uses a shorter connect timeout so a missing sidecar does not stall startup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DialOptions {
+    pub connect_timeout: Duration,
+    pub request_timeout: Duration,
+}
+
+impl Default for DialOptions {
+    fn default() -> Self {
+        Self {
+            connect_timeout: Duration::from_secs(5),
+            request_timeout: Duration::from_secs(120),
+        }
+    }
+}
+
 /// Dial `@composio/grpc` (or any server that speaks the same service).
+///
+/// The client is cheap to clone: calls share one channel.
+#[derive(Clone)]
 pub struct ComposioGrpcClient {
-    inner: GrokToolsServiceClient<AuthedChannel>,
+    inner: Arc<tokio::sync::Mutex<GrokToolsServiceClient<AuthedChannel>>>,
 }
 
 impl ComposioGrpcClient {
     pub async fn connect(target: &ComposioGrpcTarget) -> Result<Self, ComposioGrpcError> {
+        Self::connect_with(target, DialOptions::default()).await
+    }
+
+    pub async fn connect_with(
+        target: &ComposioGrpcTarget,
+        dial: DialOptions,
+    ) -> Result<Self, ComposioGrpcError> {
         let uri = normalize_address(&target.address)?;
         let authorization = match &target.auth_token {
             Some(token) => Some(bearer(token)?),
@@ -328,20 +356,22 @@ impl ComposioGrpcClient {
         };
         let endpoint = Endpoint::from_shared(uri)
             .map_err(|err| ComposioGrpcError::InvalidAddress(err.to_string()))?
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(30));
+            .connect_timeout(dial.connect_timeout)
+            .timeout(dial.request_timeout);
         let channel = endpoint
             .connect()
             .await
             .map_err(ComposioGrpcError::Transport)?;
         let inner =
             GrokToolsServiceClient::with_interceptor(channel, AuthInterceptor { authorization });
-        Ok(Self { inner })
+        Ok(Self {
+            inner: Arc::new(tokio::sync::Mutex::new(inner)),
+        })
     }
 
     /// `include_schemas` defaults to true. Category is always external.
     pub async fn list_tools(
-        &mut self,
+        &self,
         options: ListToolsOptions,
     ) -> Result<Vec<ComposioTool>, ComposioGrpcError> {
         let request = ListToolsRequest {
@@ -349,8 +379,8 @@ impl ComposioGrpcClient {
             include_disabled: options.include_disabled,
             include_schemas: options.include_schemas,
         };
-        let response = self
-            .inner
+        let mut inner = self.inner.lock().await;
+        let response = inner
             .list_tools(request)
             .await
             .map_err(ComposioGrpcError::Status)?
@@ -358,9 +388,9 @@ impl ComposioGrpcClient {
         Ok(response.tools.into_iter().map(describe_tool).collect())
     }
 
-    pub async fn get_tool(&mut self, name: &str) -> Result<ComposioTool, ComposioGrpcError> {
-        let response = self
-            .inner
+    pub async fn get_tool(&self, name: &str) -> Result<ComposioTool, ComposioGrpcError> {
+        let mut inner = self.inner.lock().await;
+        let response = inner
             .get_tool_info(GetToolInfoRequest {
                 tool_name: name.to_owned(),
             })
@@ -371,7 +401,7 @@ impl ComposioGrpcClient {
     }
 
     pub async fn execute(
-        &mut self,
+        &self,
         name: &str,
         input: &Value,
         options: ExecuteOptions,
@@ -385,8 +415,8 @@ impl ComposioGrpcClient {
             }),
             call_id: options.call_id,
         };
-        let response = self
-            .inner
+        let mut inner = self.inner.lock().await;
+        let response = inner
             .execute_tool(request)
             .await
             .map_err(ComposioGrpcError::Status)?
@@ -397,7 +427,7 @@ impl ComposioGrpcClient {
     /// Lock the server to these ids. A bad id returns `success: false` and
     /// leaves the previous lock in place.
     pub async fn finalize(
-        &mut self,
+        &self,
         tools: &[FinalizeTool],
     ) -> Result<FinalizeOutcome, ComposioGrpcError> {
         let request = FinalizeToolServerConfigRequest {
@@ -412,8 +442,8 @@ impl ComposioGrpcClient {
                 .collect(),
             ..FinalizeToolServerConfigRequest::default()
         };
-        let response = self
-            .inner
+        let mut inner = self.inner.lock().await;
+        let response = inner
             .finalize_tool_config_request(request)
             .await
             .map_err(ComposioGrpcError::Status)?
@@ -525,6 +555,42 @@ fn parse_details(raw: &str) -> Option<Value> {
     Some(serde_json::from_str(raw).unwrap_or(Value::String(raw.to_owned())))
 }
 
+const MODEL_NAME_MAX: usize = 64;
+
+/// Client-facing tool name a model provider will accept.
+///
+/// Keeps `^[A-Za-z_][A-Za-z0-9_-]{0,63}$`. Other characters become `_`.
+pub fn model_tool_name(name: &str) -> Option<String> {
+    if is_model_tool_name(name) {
+        return Some(name.to_owned());
+    }
+    let mut sanitized = String::new();
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            sanitized.push(ch);
+        } else {
+            sanitized.push('_');
+        }
+    }
+    if sanitized.starts_with(|ch: char| ch.is_ascii_digit() || ch == '-') {
+        sanitized.insert(0, '_');
+    }
+    if sanitized.len() > MODEL_NAME_MAX {
+        sanitized.truncate(MODEL_NAME_MAX);
+    }
+    is_model_tool_name(&sanitized).then_some(sanitized)
+}
+
+fn is_model_tool_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && name.len() <= MODEL_NAME_MAX
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
 fn error_code_name(code: i32) -> String {
     ErrorCode::try_from(code)
         .map(|parsed| parsed.as_str_name().to_owned())
@@ -609,5 +675,19 @@ mod tests {
         let target = resolve_target(&child, None, None).expect("target");
         assert_eq!(target.address, "127.0.0.1:2");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn model_names_stay_within_the_provider_charset() {
+        assert_eq!(
+            super::model_tool_name("GITHUB_GET_USER").as_deref(),
+            Some("GITHUB_GET_USER")
+        );
+        assert_eq!(
+            super::model_tool_name("github.get user").as_deref(),
+            Some("github_get_user")
+        );
+        assert_eq!(super::model_tool_name("").as_deref(), None);
+        assert_eq!(super::model_tool_name("1tool").as_deref(), Some("_1tool"));
     }
 }
